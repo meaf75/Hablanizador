@@ -4,9 +4,16 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System;
+using System.IO;
 
 public class ContradorGeneral : MonoBehaviour {
+    public AudioSource audioSource;
+    //temporary audio vector we write to every second while recording is enabled..
+    List<float> tempRecording = new List<float>();
     public TextMeshProUGUI txtEstado;
+    //list of recorded clips...
+    List<float[]> recordedClips = new List<float[]>();
 
     public Button BtnGrabar;
     public Button BtnProcesarUML;
@@ -27,6 +34,58 @@ public class ContradorGeneral : MonoBehaviour {
     private void Start() {
         StartCoroutine(mensajeInicial());
     }
+    bool wasRecording = false;
+
+    void Update() {
+        // if (!Grabando && wasRecording)
+        // {
+        //     wasRecording = false;
+
+        //     //stop recording, get length, create a new array of samples
+        //     int length = Microphone.GetPosition(null);
+
+        //     Microphone.End(null);
+        //     float[] clipData = new float[length];
+        //     audioSource.clip.GetData(clipData, 0);
+        //     //create a larger vector that will have enough space to hold our temporary
+        //     //recording, and the last section of the current recording
+        //     float[] fullClip = new float[clipData.Length + tempRecording.Count];
+        //     for (int i = 0; i < fullClip.Length; i++)
+        //     {
+        //         //write data all recorded data to fullCLip vector
+        //         if (i < tempRecording.Count)
+        //             fullClip[i] = tempRecording[i];
+        //         else
+        //             fullClip[i] = clipData[i - tempRecording.Count];
+        //     }
+
+        //     recordedClips.Add(fullClip);
+        //     audioSource.clip = AudioClip.Create("recorded samples", fullClip.Length, 1, 44100, false);
+        //     audioSource.clip.SetData(fullClip, 0);
+        //     audioSource.loop = true; 
+        //     string dir; 
+        //     if (Application.platform == RuntimePlatform.Android){
+        //         dir = Application.persistentDataPath;
+        //     }else{
+        //         dir = Application.dataPath;
+        //     }
+        //     if (Directory.Exists(Path.Combine(dir, "clips"))) {
+        //         Directory.CreateDirectory(Path.Combine(dir, "clips"));
+        //     }
+        //     var filepath = Path.Combine(dir, "clips/grabacion"+DateTime.Now.Ticks+".wav");
+        //     SavWav.Save(filepath, audioSource.clip );
+
+        // }else if(Grabando){
+        //     print("Grabando");
+        //     //stop audio playback and start new recording...
+        //     audioSource.Stop();
+        //     tempRecording.Clear();
+        //     Microphone.End(null);
+        //     audioSource.clip = Microphone.Start(null, true, 1, 44100);
+        //     Invoke("ResizeRecording", 1);
+        // }
+
+    }
 
     IEnumerator mensajeInicial() {
         EstadoBoton(false);
@@ -37,6 +96,14 @@ public class ContradorGeneral : MonoBehaviour {
     }
 
     public void Grabar() {
+
+        //stop audio playback and start new recording...
+        audioSource.Stop();
+        tempRecording.Clear();
+        Microphone.End(null);
+        audioSource.clip = Microphone.Start(null, true, 1, 44100);
+        Invoke("ResizeRecording", 1);
+
         controlAudio.ReproducirSonido(NombresAudios.Grabando);
         PanelListoProcesar.SetActive(false);
         Grabando = true;
@@ -47,6 +114,7 @@ public class ContradorGeneral : MonoBehaviour {
         if (Grabando) {
             controlAudio.ReproducirSonido(NombresAudios.Añadiendo_tarea);
             Grabando = false;
+            wasRecording = true;
             StartCoroutine(GuardarGrabacion());
         }
     }
@@ -54,6 +122,8 @@ public class ContradorGeneral : MonoBehaviour {
     IEnumerator GuardarGrabacion() {
 
         EstadoBoton(false);
+
+        guardarArchivo();
 
         for (int i = 0; i < 5; i++) {
             AsignarTexto("Procesando grabacion.", Amarillo);
@@ -71,6 +141,42 @@ public class ContradorGeneral : MonoBehaviour {
         controlAudio.ReproducirSonido(NombresAudios.Dime_que_quieres_hacer);
         EstadoBoton(true);
         PanelListoProcesar.SetActive(true);
+    }
+
+    void guardarArchivo() {
+        //stop recording, get length, create a new array of samples
+        int length = Microphone.GetPosition(null);
+
+        Microphone.End(null);
+        float[] clipData = new float[length];
+        audioSource.clip.GetData(clipData, 0);
+        //create a larger vector that will have enough space to hold our temporary
+        //recording, and the last section of the current recording
+        float[] fullClip = new float[clipData.Length + tempRecording.Count];
+        for (int i = 0; i < fullClip.Length; i++) {
+            //write data all recorded data to fullCLip vector
+            if (i < tempRecording.Count)
+                fullClip[i] = tempRecording[i];
+            else
+                fullClip[i] = clipData[i - tempRecording.Count];
+        }
+
+        recordedClips.Add(fullClip);
+        audioSource.clip = AudioClip.Create("recorded samples", fullClip.Length, 1, 44100, false);
+        audioSource.clip.SetData(fullClip, 0);
+        audioSource.loop = true;
+        string dir;
+        if (Application.platform == RuntimePlatform.Android) {
+            dir = Application.persistentDataPath;
+        } else {
+            dir = Application.dataPath;
+        }
+        if (Directory.Exists(Path.Combine(dir, "clips"))) {
+            Directory.CreateDirectory(Path.Combine(dir, "clips"));
+        }
+        var filepath = Path.Combine(dir, "clips/grabacion" + DateTime.Now.Ticks + ".wav");
+        SavWav.Save(filepath, audioSource.clip);
+
     }
 
     void AsignarTexto(string texto, Color color) {
@@ -118,9 +224,9 @@ public class ContradorGeneral : MonoBehaviour {
         PanelListoProcesar.SetActive(false);
         PanelLenguajes.SetActive(true);
     }
-    
+
     public void PasarUMLLenguaje(string lenguaje) {
-        AsignarTexto("Procesando modelo UML a " + lenguaje,Amarillo);
+        AsignarTexto("Procesando modelo UML a " + lenguaje, Amarillo);
         StartCoroutine(ActivarPanelFin());
     }
 
@@ -146,4 +252,17 @@ public class ContradorGeneral : MonoBehaviour {
         BtnImg.raycastTarget = estado;
         BtnGrabar.interactable = estado;
     }
+
+
+    void ResizeRecording() {
+        if (Grabando) {
+            //add the next second of recorded audio to temp vector
+            int length = 44100;
+            float[] clipData = new float[length];
+            audioSource.clip.GetData(clipData, 0);
+            tempRecording.AddRange(clipData);
+            Invoke("ResizeRecording", 1);
+        }
+    }
+
 }
